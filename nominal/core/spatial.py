@@ -45,8 +45,10 @@ logger = logging.getLogger(__name__)
 # below with clients.upload.sign_download(auth_header, SignDownloadRequest(...)).
 _SIGN_DOWNLOAD_PATH = "/upload/v1/sign-download"
 
-# scout's dagger reverse proxy. Strips this prefix and forwards to dagger.
-_DAGGER_PROXY_PATH = "/dagger"
+# scout's dagger reverse proxy is mounted at `@Path("/api/dagger")` in
+# combined-service. `NominalClient._api_base_url` is the bare host (no `/api`
+# suffix), so the constant must carry the full proxy prefix.
+_DAGGER_PROXY_PATH = "/api/dagger"
 
 
 def upload_point_cloud(
@@ -182,8 +184,6 @@ def _presign_download(clients: ClientsBunch, s3_path: str) -> str:
 
 
 def _dagger_base_url(clients: ClientsBunch) -> str:
-    # scout's API base already ends in `/api`; dagger proxy is mounted at
-    # `/api/dagger`, so appending `/dagger` gives the right outside URL.
     return clients._api_base_url.rstrip("/") + _DAGGER_PROXY_PATH
 
 
