@@ -115,12 +115,18 @@ def test_dagger_base_url_strips_trailing_api_with_slash():
 
 
 def _make_clients_mock(
-    *, workspace_locator: str = "ws-locator", org_uuid: str = "11111111-2222-3333-4444-555555555555"
+    *,
+    workspace_uuid: str = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    workspace_id_slug: str = "nominal",
+    org_uuid: str = "11111111-2222-3333-4444-555555555555",
 ):
     clients = MagicMock()
     workspace = MagicMock()
-    workspace.rid = f"ri.scout.cerulean-staging.workspace.{workspace_locator}"
-    workspace.id = workspace_locator
+    workspace.rid = f"ri.scout.cerulean-staging.workspace.{workspace_uuid}"
+    # workspace.id is a human slug (e.g. "nominal"), not the UUID. Dagger
+    # parses the object-space path param as UUID, so upload_point_cloud must
+    # derive the UUID from workspace.rid, not workspace.id.
+    workspace.id = workspace_id_slug
     workspace.org = f"ri.scout.cerulean-staging.organization.{org_uuid}"
     clients.resolve_workspace.return_value = workspace
     clients.auth_header = "Bearer test-token-123"
@@ -144,7 +150,7 @@ def test_upload_point_cloud_full_flow(tmp_path: Path):
     nominal_client = MagicMock()
     nominal_client._clients = clients
 
-    s3_path = "s3://nominal-uploads/ws-locator/ouster.csv"
+    s3_path = "s3://nominal-uploads/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/ouster.csv"
 
     # Spatial.create returns a real spatial RID string. The SDK's CreateSpatialRequest
     # doesn't yet have dagger_uuid/source_handle kwargs (waiting on the regenerated SDK
@@ -196,15 +202,18 @@ def test_upload_point_cloud_full_flow(tmp_path: Path):
     assert auth_client_cls.call_args.kwargs["base_url"] == "https://api.nominal.test/api/dagger"
     assert auth_client_cls.call_args.kwargs["token"] == "test-token-123"
 
-    # ensureObjectSpace got called with workspace.id and the org UUID.
+    # ensureObjectSpace got called with the workspace's UUID locator (NOT
+    # workspace.id, which is a human slug) and the org UUID.
+    workspace_uuid = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
     put_kwargs = put_mock.call_args.kwargs
-    assert put_kwargs["id"] == workspace.id
+    assert put_kwargs["id"] == workspace_uuid
     assert put_kwargs["tenant"] == uuid.UUID("11111111-2222-3333-4444-555555555555")
 
-    # post_import got the right args. tenant is org UUID, object_space is workspace.id.
+    # post_import got the right args. tenant is org UUID, object_space is
+    # the workspace UUID.
     post_kwargs = post_mock.call_args.kwargs
     assert post_kwargs["tenant"] == uuid.UUID("11111111-2222-3333-4444-555555555555")
-    assert post_kwargs["object_space"] == workspace.id
+    assert post_kwargs["object_space"] == workspace_uuid
     import_req = post_kwargs["body"]
     assert import_req.source_uri == "https://presigned.example/data.csv?sig=abc"
     assert import_req.columns.geometry == [0, 1, 2]

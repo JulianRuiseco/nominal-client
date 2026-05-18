@@ -84,7 +84,10 @@ def upload_point_cloud(
 
     workspace = clients.resolve_workspace(None)
     workspace_rid = workspace.rid
-    object_space = workspace.id
+    # Dagger's object-space `id` path parameter is parsed as a UUID. The
+    # Workspace.id field is a human slug ("nominal", "sandbox"), so pull
+    # the UUID locator off the workspace RID instead.
+    object_space = _extract_rid_locator_uuid(workspace.rid)
     tenant = _extract_rid_locator_uuid(workspace.org)
 
     s3_path = upload_multipart_file(
@@ -105,7 +108,7 @@ def upload_point_cloud(
     dagger_client = AuthenticatedClient(base_url=_dagger_base_url(clients), token=token)
 
     put_resp = put_object_space.sync_detailed(
-        id=object_space,  # type: ignore[arg-type]
+        id=object_space,
         body=PutObjectSpaceRequest(),
         tenant=tenant,
         client=dagger_client,
@@ -126,7 +129,7 @@ def upload_point_cloud(
         model_uuid=model_uuid,
         body=import_request,
         tenant=tenant,
-        object_space=object_space,  # type: ignore[arg-type]
+        object_space=object_space,
         client=dagger_client,
     )
     if import_resp.status_code != 202:
