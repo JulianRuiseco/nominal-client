@@ -209,9 +209,7 @@ def _extract_rid_locator_uuid(rid: str) -> uuid.UUID:
 _TYPE_INFERENCE_SAMPLE_ROWS = 1000
 
 
-def _read_csv_header_and_samples(
-    path: Path, n_samples: int = _TYPE_INFERENCE_SAMPLE_ROWS
-) -> tuple[str, list[str]]:
+def _read_csv_header_and_samples(path: Path, n_samples: int = _TYPE_INFERENCE_SAMPLE_ROWS) -> tuple[str, list[str]]:
     """Read the header row + up to n_samples non-empty data rows."""
     with path.open("r", newline="") as f:
         try:
@@ -285,7 +283,6 @@ def _classify_column(values: Sequence[str]) -> str:
     string, matching the legacy single-row behavior for columns the sample
     happens not to populate.
     """
-    seen_int = False
     seen_real = False
     nonempty = 0
     for v in values:
@@ -297,8 +294,6 @@ def _classify_column(values: Sequence[str]) -> str:
             return "string"
         if kind == "real":
             seen_real = True
-        else:
-            seen_int = True
     if not nonempty:
         return "string"
     return "real" if seen_real else "int"
