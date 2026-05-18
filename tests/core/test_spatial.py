@@ -100,6 +100,20 @@ def test_dagger_base_url_strips_trailing_slash():
     assert spatial._dagger_base_url(clients) == "https://api.gov.nominal.io/api/dagger"
 
 
+def test_dagger_base_url_strips_trailing_api():
+    # NominalClient.create's docstring example uses "https://host/api"; the
+    # proxy is at /api/dagger regardless, so strip /api before appending.
+    clients = MagicMock()
+    clients._api_base_url = "https://api.gov.nominal.io/api"
+    assert spatial._dagger_base_url(clients) == "https://api.gov.nominal.io/api/dagger"
+
+
+def test_dagger_base_url_strips_trailing_api_with_slash():
+    clients = MagicMock()
+    clients._api_base_url = "https://api.gov.nominal.io/api/"
+    assert spatial._dagger_base_url(clients) == "https://api.gov.nominal.io/api/dagger"
+
+
 def _make_clients_mock(
     *, workspace_locator: str = "ws-locator", org_uuid: str = "11111111-2222-3333-4444-555555555555"
 ):

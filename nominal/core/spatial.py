@@ -184,7 +184,14 @@ def _presign_download(clients: ClientsBunch, s3_path: str) -> str:
 
 
 def _dagger_base_url(clients: ClientsBunch) -> str:
-    return clients._api_base_url.rstrip("/") + _DAGGER_PROXY_PATH
+    # Tolerate both forms of base_url stored on ClientsBunch: bare host
+    # ("https://api.gov.nominal.io") and host+"/api" (matches the docstring on
+    # NominalClient.create). The proxy is mounted at "/api/dagger" in either
+    # case, so strip a trailing "/api" before appending.
+    base = clients._api_base_url.rstrip("/")
+    if base.endswith("/api"):
+        base = base[: -len("/api")]
+    return base + _DAGGER_PROXY_PATH
 
 
 def _extract_rid_locator_uuid(rid: str) -> uuid.UUID:
