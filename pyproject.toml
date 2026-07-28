@@ -96,6 +96,13 @@ compute = [
 video = [
     "nominal-video==0.1.9; platform_python_implementation=='CPython' and ((sys_platform=='win32' and platform_machine=='AMD64') or (sys_platform=='darwin' and platform_machine=='arm64') or (sys_platform=='linux' and (platform_machine=='x86_64' or platform_machine=='aarch64')))",
 ]
+# Chunk decompressors for inspecting MCAP video topics. Reading a file's channel list and time
+# bounds needs neither; they are only used by the codec/keyframe probe, which has to decompress one
+# chunk per channel. Most real recordings use zstd.
+mcap = [
+    "zstandard>=0.22.0",
+    "lz4>=4.3.0",
+]
 
 [project.scripts]
 nom = 'nominal.cli:nom'
@@ -174,6 +181,12 @@ disable_error_code = ["no-any-return", "no-untyped-def"]
 
 [[tool.mypy.overrides]]
 module = "nptdms"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# Optional at runtime: boto3 lets MCAPs be read straight out of a bucket, and the chunk
+# decompressors are only needed by the direct-MCAP codec probe (the `mcap` extra).
+module = ["boto3", "lz4.*", "zstandard"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

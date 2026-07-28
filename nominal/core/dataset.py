@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
 from types import MappingProxyType
-from typing import BinaryIO, Iterable, Mapping, Sequence, TypeAlias, overload
+from typing import BinaryIO, Iterable, Literal, Mapping, Sequence, TypeAlias, overload
 
 from nominal_api import api, ingest_api, scout_asset_api, scout_catalog
 from typing_extensions import Self, deprecated
@@ -27,6 +27,12 @@ from nominal.core.exceptions import NominalIngestError, NominalIngestMultiError,
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.ingestion_job import IngestionJob
 from nominal.core.log import LogPoint, _write_logs
+from nominal.core.mcap_video import (
+    DEFAULT_MAX_KEYFRAME_INTERVAL_SECONDS,
+    McapVideoRegistration,
+    UnsupportedVideoHandling,
+    _register_mcap_video,
+)
 from nominal.ts import (
     IntegralNanosecondsUTC,
     _AnyTimestampType,
@@ -377,6 +383,7 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
     # Backward compatibility
     add_journal_json_to_dataset = add_journal_json
 
+    @overload
     def add_mcap(
         self,
         path: PathLike,
@@ -384,18 +391,60 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
         exclude_topics: Iterable[str] | None = None,
         tags: Mapping[str, str] | None = None,
         ignore_invalid_topics: bool | None = None,
-    ) -> DatasetFile:
+        *,
+        copy: Literal[True] = True,
+    ) -> DatasetFile: ...
+
+    @overload
+    def add_mcap(
+        self,
+        path: PathLike,
+        include_topics: Iterable[str] | None = None,
+        exclude_topics: Iterable[str] | None = None,
+        tags: Mapping[str, str] | None = None,
+        ignore_invalid_topics: bool | None = None,
+        *,
+        copy: Literal[False],
+    ) -> McapVideoRegistration: ...
+
+    def add_mcap(
+        self,
+        path: PathLike,
+        include_topics: Iterable[str] | None = None,
+        exclude_topics: Iterable[str] | None = None,
+        tags: Mapping[str, str] | None = None,
+        ignore_invalid_topics: bool | None = None,
+        *,
+        copy: bool = True,
+    ) -> DatasetFile | McapVideoRegistration:
         """Add an MCAP file to an existing dataset.
 
         Args:
         ----
-            path: Path to the MCAP file to add to this dataset
+            path: Path to the MCAP file to add to this dataset. With `copy=False` this may also be an
+                `s3://` object or prefix, or an `https://` URL.
             include_topics: If present, list of topics to restrict ingestion to.
                 If not present, defaults to all protobuf-encoded topics present in the MCAP.
             exclude_topics: If present, list of topics to not ingest from the MCAP.
             tags: key-value pairs to apply as tags to all data uniformly in the file.
             ignore_invalid_topics: If true, ignore invalid MCAP topics and continue ingesting valid topics.
+            copy: If True (the default), upload the file to Nominal and ingest it. If False, register
+                the file's video topics in place: Nominal reads only the MCAP's own index and the
+                video bytes stay in your bucket. See `add_mcap_video` for the full set of options.
+
+        Returns:
+        -------
+            The created `DatasetFile` when copying, or an `McapVideoRegistration` describing the
+            channels registered for direct playback when `copy=False`.
         """
+        if not copy:
+            return self.add_mcap_video(
+                path,
+                topics=None if include_topics is None else list(include_topics),
+                exclude_topics=None if exclude_topics is None else list(exclude_topics),
+                tags=tags,
+                copy=False,
+            )
         path = Path(path)
         with path.open("rb") as data_file:
             return self.add_mcap_from_io(
@@ -409,6 +458,70 @@ class Dataset(DataSource, RefreshableConjureMixin[scout_catalog.EnrichedDataset]
 
     # Backward compatibility
     add_mcap_to_dataset = add_mcap
+
+    def add_mcap_video(
+        self,
+        source: PathLike,
+        *,
+        topics: Sequence[str] | None = None,
+        exclude_topics: Sequence[str] | None = None,
+        tags: Mapping[str, str] | None = None,
+        copy: bool = False,
+        on_unsupported: UnsupportedVideoHandling = "error",
+        channel_names: Mapping[str, str] | None = None,
+        max_keyframe_interval_seconds: float = DEFAULT_MAX_KEYFRAME_INTERVAL_SECONDS,
+    ) -> McapVideoRegistration:
+        """Register the video topics of one or more MCAP files as video channels on this dataset.
+
+        By default nothing is copied and nothing is re-encoded. Nominal reads each file's summary
+        section over a few ranged reads to discover its video topics, time bounds and chunk index,
+        and the browser later streams video chunks straight from your bucket. Storage cost in
+        Nominal is kilobytes of metadata per file rather than 1.5-2.5x the source.
+
+        Not every recording can be played this way. Each topic is probed and classified at
+        registration, so unsupported files are known before anyone clicks play rather than after.
+        A topic is unsupported when its codec is not H.264/H.265, when its keyframes are too sparse
+        for responsive seeking, when the bitstream carries B-frames, or when the file has no chunk
+        index to range-read.
+
+        Args:
+        ----
+            source: Location of the MCAP. A local path, an `https://` URL, an `s3://` object, or an
+                `s3://` prefix (listed with your own credentials). A local path is uploaded into
+                Nominal storage and registered from there, since a browser cannot read it in
+                place; that stores the bytes, so it is a dev and test convenience rather than the
+                product flow, which registers files already sitting in customer storage.
+            topics: If present, restrict registration to these topics. Defaults to every video topic.
+            exclude_topics: If present, video topics to leave unregistered.
+            tags: key-value pairs applied to every registered channel.
+            copy: If True, upload and ingest through the standard video pipeline instead, which
+                transcodes for uniform seek behaviour at the cost of duplicating the bytes.
+            on_unsupported: What to do with topics that cannot be played directly. "error" (the
+                default) raises, "ingest" copies and re-encodes just those topics, "skip" leaves
+                them unregistered and reports them.
+            channel_names: Override the channel name for a topic. Defaults to the topic itself.
+            max_keyframe_interval_seconds: Longest keyframe spacing still considered seekable.
+
+        Returns:
+        -------
+            An `McapVideoRegistration` naming every topic found and what happened to it.
+
+        Raises:
+        ------
+            NominalError: If a topic cannot be played directly and `on_unsupported="error"`.
+            DirectMcapUnsupportedError: If this Nominal deployment predates direct MCAP playback.
+        """
+        return _register_mcap_video(
+            self,
+            str(source),
+            topics=topics,
+            exclude_topics=exclude_topics,
+            tags=tags or {},
+            copy=copy,
+            on_unsupported=on_unsupported,
+            channel_names=channel_names,
+            max_keyframe_interval_seconds=max_keyframe_interval_seconds,
+        )
 
     def add_mcap_from_io(
         self,

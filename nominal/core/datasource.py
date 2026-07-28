@@ -25,6 +25,7 @@ from nominal_api import (
 
 from nominal._utils import batched
 from nominal.core._clientsbunch import HasScoutParams, ProtoWriteService
+from nominal.core._mcap.registration import DirectMcapVideoService
 from nominal.core._stream.batch_processor import process_batch_legacy
 from nominal.core._stream.write_stream import DataStream, WriteStream
 from nominal.core._types import PathLike
@@ -85,6 +86,8 @@ class DataSource(HasRid):
         def storage_writer(self) -> storage_writer_api.NominalChannelWriterService: ...
         @property
         def proto_write(self) -> ProtoWriteService: ...
+        @property
+        def direct_mcap(self) -> DirectMcapVideoService: ...
         @property
         def channel_metadata(self) -> timeseries_channelmetadata.ChannelMetadataService: ...
         @property

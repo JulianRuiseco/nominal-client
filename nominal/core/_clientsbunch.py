@@ -31,6 +31,7 @@ from nominal_api import (
 from typing_extensions import Self
 
 from nominal._utils.dataclass_tools import LazyField
+from nominal.core._mcap.registration import DirectMcapVideoService
 from nominal.core._utils.grpc_tools import GRPCStub, create_grpc_channel, translate_grpc_errors
 from nominal.core._utils.networking import (
     HeaderProvider,
@@ -165,6 +166,7 @@ class ClientsBunch:
     checklist_execution: scout_checklistexecution_api.ChecklistExecutionService
     datareview: scout_datareview_api.DataReviewService
     proto_write: ProtoWriteService
+    direct_mcap: DirectMcapVideoService
     event: event.EventService
     comments: comments_pb2_grpc.CommentsServiceStub
     channel_metadata: timeseries_channelmetadata.ChannelMetadataService
@@ -326,6 +328,7 @@ class ClientsBunch:
             checklist_execution=client_factory(scout_checklistexecution_api.ChecklistExecutionService),
             datareview=client_factory(scout_datareview_api.DataReviewService),
             proto_write=client_factory(ProtoWriteService),
+            direct_mcap=client_factory(DirectMcapVideoService),
             event=client_factory(event.EventService),
             channel_metadata=client_factory(timeseries_channelmetadata.ChannelMetadataService),
             series_metadata=client_factory(timeseries_metadata.SeriesMetadataService),
