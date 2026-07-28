@@ -70,13 +70,16 @@ class TestSourceResolution:
         assert isinstance(source, S3Source)
         assert source.bucket == "saronic-recordings"
         assert source.key == "missions/0142/front.mcap"
-        assert source.to_conjure() == {"s3": {"bucket": "saronic-recordings", "key": "missions/0142/front.mcap"}}
+        assert source.to_conjure() == {
+            "type": "s3",
+            "s3": {"bucket": "saronic-recordings", "key": "missions/0142/front.mcap"},
+        }
 
     def test_maps_https_urls_to_a_uri_source(self):
         source = source_from_uri("https://example.test/recording.mcap")
 
         assert isinstance(source, UriSource)
-        assert source.to_conjure() == {"uri": {"url": "https://example.test/recording.mcap"}}
+        assert source.to_conjure() == {"type": "uri", "uri": {"url": "https://example.test/recording.mcap"}}
 
     def test_refuses_a_location_a_browser_cannot_reach(self):
         with pytest.raises(ValueError, match="neither an s3:// path nor an https:// URL"):
@@ -203,7 +206,10 @@ class TestReferenceModeRegistration:
         assert uploaded["path"] == path
         _auth, request = mock_clients.direct_mcap.register.call_args.args
         file = request["files"][0]
-        assert file["source"] == {"s3": {"bucket": "upload-bucket", "key": "uploads/abc123/recording.mcap"}}
+        assert file["source"] == {
+            "type": "s3",
+            "s3": {"bucket": "upload-bucket", "key": "uploads/abc123/recording.mcap"},
+        }
         # The multipart etag is not the md5 of the local bytes, so none is pinned.
         assert file["etag"] is None
         assert len(result.direct_channels) == 1

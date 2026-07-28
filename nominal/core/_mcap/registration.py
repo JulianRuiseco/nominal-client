@@ -50,7 +50,8 @@ class S3Source:
     key: str
 
     def to_conjure(self) -> Dict[str, Any]:
-        return {"s3": {"bucket": self.bucket, "key": self.key}}
+        # Conjure unions carry a "type" discriminator alongside the variant field.
+        return {"type": "s3", "s3": {"bucket": self.bucket, "key": self.key}}
 
 
 @dataclass(frozen=True)
@@ -60,7 +61,7 @@ class UriSource:
     url: str
 
     def to_conjure(self) -> Dict[str, Any]:
-        return {"uri": {"url": self.url}}
+        return {"type": "uri", "uri": {"url": self.url}}
 
 
 def source_from_uri(uri: str) -> "S3Source | UriSource":
